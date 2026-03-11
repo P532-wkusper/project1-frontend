@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="page-header">
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="portfolio.html">Portfolio</a>
+      <a href="feed.html">Feed</a>
+      <a href="history.html">History</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h1>Order Entry</h1>
+      <p>Place market and limit orders from this page.</p>
+    </section>
+
+    <section class="card">
+      <h2>Selected Stock</h2>
+      <div id="selected-stock-card" class="stock-card stock-card-large">
+        <h3 id="selected-stock-symbol">--</h3>
+        <p id="selected-stock-price" class="stock-price">--</p>
+        <p class="stock-label">Current market price</p>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat">
+          <p class="stat-label">Current Balance</p>
+          <p id="current-balance" class="stat-value">--</p>
+        </div>
+        <div class="stat">
+          <p class="stat-label">Shares You Own</p>
+          <p id="owned-shares" class="stat-value">--</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <form id="order-form">
+        <div class="form-grid">
+          <div class="field-group">
+            <label for="symbol">Symbol</label>
+            <input id="symbol" name="symbol" type="text" readonly required>
+          </div>
+
+          <div class="field-group">
+            <label for="side">Buy or Sell</label>
+            <select id="side" name="side" required>
+              <option value="BUY">Buy</option>
+              <option value="SELL">Sell</option>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label for="quantity-type">Quantity Type</label>
+            <select id="quantity-type" name="quantityType" required>
+              <option value="SHARES">Shares</option>
+              <option value="DOLLARS">Dollars</option>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label for="quantity">Quantity</label>
+            <input id="quantity" name="quantity" type="number" min="0.0001" step="0.0001" required>
+          </div>
+
+          <div class="field-group">
+            <label for="order-type">Order Type</label>
+            <select id="order-type" name="orderType" required>
+              <option value="MARKET">Market</option>
+              <option value="LIMIT">Limit</option>
+            </select>
+          </div>
+
+          <div class="field-group" id="limit-price-group">
+            <label for="limit-price">Limit Price</label>
+            <input id="limit-price" name="limitPrice" type="number" min="0.0001" step="0.0001">
+          </div>
+        </div>
+
+        <button type="submit">Submit Order</button>
+      </form>
+
+      <p id="order-message" class="message"></p>
+    </section>
+  </main>
+
+  <script>
+    let host = "https://trading-simulator-latest.onrender.com";
+    let selectedSymbol = "";
+    let latestStocks = [];
+    let latestHoldings = {};
+    let latestBalance = null;
+
+    initializeOrderPage();
+
+    function initializeOrderPage() {
+      let form = document.getElementById("order-form");
+      let orderType = document.getElementById("order-type");
+      let symbolInput = document.getElementById("symbol");
+      let submitButton = document.querySelector("#order-form button[type='submit']");
+      let message = document.getElementById("order-message");
+
+      let params = new URLSearchParams(window.location.search);
+      let querySymbol = params.get("symbol");
+
+      if (querySymbol) {
+        selectedSymbol = querySymbol.toUpperCase();
+        symbolInput.value = selectedSymbol;
+        refreshOrderContext();
+        setInterval(refreshOrderContext, 5000);
+      } else {
+        submitButton.disabled = true;
+        message.className = "message error";
+        message.textContent = "Select a stock from Feed or Portfolio to place an order.";
+        document.getElementById("selected-stock-symbol").textContent = "No Symbol Selected";
+        document.getElementById("selected-stock-price").textContent = "--";
+        document.getElementById("current-balance").textContent = "--";
+        document.getElementById("owned-shares").textContent = "--";
+      }
+
+      updateLimitFieldVisibility();
+
+      orderType.addEventListener("change", updateLimitFieldVisibility);
+      form.addEventListener("submit", submitOrder);
+    }
+
+    async function getAllStocks() {
+      let response = await fetch(host + "/stocks");
+      if (!response.ok) {
+        throw new Error("Unable to load stocks.");
+      }
+      let result = await response.json();
+      return result;
+    }
+
+    async function getBalance() {
+      let response = await fetch(host + "/portfolio/balance");
+      if (!response.ok) {
+        throw new Error("Unable to load balance.");
+      }
+      let result = await response.json();
+      return result;
+    }
+
+    async function getHoldings() {
+      let response = await fetch(host + "/portfolio/holdings");
+      if (!response.ok) {
+        throw new Error("Unable to load holdings.");
+      }
+      let result = await response.json();
+      return result;
+    }
+
+    function renderOrderContext() {
+      let symbolElement = document.getElementById("selected-stock-symbol");
+      let priceElement = document.getElementById("selected-stock-price");
+      let balanceElement = document.getElementById("current-balance");
+      let ownedSharesElement = document.getElementById("owned-shares");
+
+      symbolElement.textContent = selectedSymbol;
+
+      let matchingStock = null;
+      for (let stock of latestStocks) {
+        if (stock.symbol === selectedSymbol) {
+          matchingStock = stock;
+          break;
+        }
+      }
+
+      if (matchingStock) {
+        priceElement.textContent = "$" + Number(matchingStock.price).toFixed(2);
+      } else {
+        priceElement.textContent = "Unavailable";
+      }
+
+      if (latestBalance === null) {
+        balanceElement.textContent = "Unavailable";
+      } else {
+        balanceElement.textContent = "$" + Number(latestBalance).toFixed(2);
+      }
+
+      let ownedShares = latestHoldings[selectedSymbol];
+      if (ownedShares === undefined || ownedShares === null) {
+        ownedSharesElement.textContent = "0.0000";
+      } else {
+        ownedSharesElement.textContent = Number(ownedShares).toFixed(4);
+      }
+    }
+
+    async function refreshOrderContext() {
+      try {
+        let data = await Promise.all([
+          getAllStocks(),
+          getBalance(),
+          getHoldings()
+        ]);
+
+        latestStocks = data[0];
+        latestBalance = data[1];
+        latestHoldings = data[2];
+
+        renderOrderContext();
+      } catch (error) {
+        document.getElementById("selected-stock-symbol").textContent = selectedSymbol;
+        document.getElementById("selected-stock-price").textContent = "Unavailable";
+        document.getElementById("current-balance").textContent = "Unavailable";
+        document.getElementById("owned-shares").textContent = "Unavailable";
+      }
+    }
+
+    function updateLimitFieldVisibility() {
+      let orderType = document.getElementById("order-type").value;
+      let limitGroup = document.getElementById("limit-price-group");
+      let limitInput = document.getElementById("limit-price");
+
+      if (orderType === "LIMIT") {
+        limitGroup.style.display = "block";
+        limitInput.required = true;
+      } else {
+        limitGroup.style.display = "none";
+        limitInput.required = false;
+        limitInput.value = "";
+      }
+    }
+
+    async function submitOrder(event) {
+      event.preventDefault();
+
+      let message = document.getElementById("order-message");
+      let side = document.getElementById("side").value;
+      let quantityType = document.getElementById("quantity-type").value;
+      let quantity = Number(document.getElementById("quantity").value);
+      let orderType = document.getElementById("order-type").value;
+      let limitPrice = Number(document.getElementById("limit-price").value);
+
+      if (!selectedSymbol) {
+        message.className = "message error";
+        message.textContent = "Select a stock from Feed or Portfolio to place an order.";
+        return;
+      }
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        message.className = "message error";
+        message.textContent = "Please enter a valid quantity.";
+        return;
+      }
+
+      if (orderType === "LIMIT" && (!Number.isFinite(limitPrice) || limitPrice <= 0)) {
+        message.className = "message error";
+        message.textContent = "Please enter a valid limit price.";
+        return;
+      }
+
+      let endpoint = "/trading/market-order";
+      let requestParams = new URLSearchParams({
+        symbol: selectedSymbol,
+        quantity: String(quantity),
+        quantityType: quantityType,
+        side: side
+      });
+
+      if (orderType === "LIMIT") {
+        endpoint = "/trading/limit-order";
+        requestParams.append("limitPrice", String(limitPrice));
+      }
+
+      message.className = "message";
+      message.textContent = "Submitting order...";
+
+      try {
+        let response = await fetch(host + endpoint + "?" + requestParams.toString(), {
+          method: "POST"
+        });
+        let resultText = await response.text();
+
+        if (!response.ok) {
+          message.className = "message error";
+          message.textContent = resultText;
+          return;
+        }
+
+        await refreshOrderContext();
+
+        message.className = "message success";
+        message.textContent = resultText;
+      } catch (error) {
+        message.className = "message error";
+        message.textContent = "Unable to reach backend.";
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feed</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="page-header">
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="portfolio.html">Portfolio</a>
+      <a href="feed.html">Feed</a>
+      <a href="history.html">History</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h1>Market Feed</h1>
+      <p>Live stock prices appear below and refresh automatically.</p>
+    </section>
+
+    <section class="card">
+      <div id="stock-feed" class="stock-grid"></div>
+    </section>
+  </main>
+
+  <script>
+    let host = "https://trading-simulator-latest.onrender.com";
+    let stocks = [];
+
+    displayStocks();
+    setInterval(refreshStocks, 5000);
+
+    async function getAllStocks() {
+      let response = await fetch(host + "/stocks");
+
+      if (!response.ok) {
+        throw new Error("Unable to load stock data.");
+      }
+
+      let result = await response.json();
+      return result;
+    }
+
+    async function displayStocks() {
+      let feed = document.getElementById("stock-feed");
+
+      feed.innerHTML = "";
+
+      try {
+        if (stocks.length === 0) {
+          stocks = await getAllStocks();
+        }
+
+        for (let stock of stocks) {
+          let div = document.createElement("div");
+          div.className = "stock-card";
+
+          let price = Number(stock.price).toFixed(2);
+          let tradeLink = "order.html?symbol=" + encodeURIComponent(stock.symbol);
+          let innerHtml = `
+            <h2>${stock.symbol}</h2>
+            <p class="stock-price">$${price}</p>
+            <p class="stock-label">Current market price</p>
+            <p><a class="card-link" href="${tradeLink}">Trade ${stock.symbol}</a></p>
+          `;
+
+          div.innerHTML = innerHtml;
+          feed.appendChild(div);
+        }
+      } catch (error) {
+        feed.innerHTML = "<p>Unable to reach the backend right now.</p>";
+      }
+    }
+
+    async function refreshStocks() {
+      try {
+        stocks = await getAllStocks();
+        await displayStocks();
+      } catch (error) {
+      }
+    }
+  </script>
+</body>
+</html>

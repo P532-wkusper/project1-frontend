@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>History</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="page-header">
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="portfolio.html">Portfolio</a>
+      <a href="feed.html">Feed</a>
+      <a href="history.html">History</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h1>Trade History</h1>
+      <p>Executed trades are shown below, newest first.</p>
+    </section>
+
+    <section class="card">
+      <div id="history-list" class="history-list"></div>
+    </section>
+  </main>
+
+  <script>
+    let host = "https://trading-simulator-latest.onrender.com";
+    let trades = [];
+
+    displayTradeHistory();
+    setInterval(refreshTradeHistory, 5000);
+
+    async function getTrades() {
+      let response = await fetch(host + "/portfolio/trades");
+      if (!response.ok) {
+        throw new Error("Unable to load trade history.");
+      }
+      let result = await response.json();
+      return result;
+    }
+
+    function formatTimestamp(timestamp) {
+      if (!timestamp) {
+        return "Unknown time";
+      }
+
+      let parsed = new Date(timestamp);
+      if (Number.isNaN(parsed.getTime())) {
+        return timestamp;
+      }
+
+      return parsed.toLocaleString();
+    }
+
+    function tradeToCardHtml(trade) {
+      let order = trade.executedOrder || {};
+      let stock = order.stock || {};
+      let symbol = stock.symbol || "Unknown";
+      let side = order.buyOrSell || "Unknown";
+      let quantity = Number(order.quantity || 0);
+      let quantityType = order.quantityType || "Unknown";
+      let status = order.status || "Unknown";
+      let price = Number(stock.price || 0);
+      let isLimit = order.limitPrice !== undefined && order.limitPrice !== null;
+      let orderType = isLimit ? "LIMIT" : "MARKET";
+
+      let displayQuantity = Number.isFinite(quantity) ? quantity.toFixed(4) : "0.0000";
+      let displayPrice = Number.isFinite(price) ? price.toFixed(2) : "0.00";
+
+      let totalValue = 0;
+      if (quantityType === "SHARES") {
+        totalValue = quantity * price;
+      } else if (quantityType === "DOLLARS") {
+        totalValue = quantity;
+      }
+
+      let displayTotal = Number.isFinite(totalValue) ? totalValue.toFixed(2) : "0.00";
+
+      return `
+        <article class="trade-card">
+          <div class="trade-header">
+            <h2>${symbol}</h2>
+            <p>${formatTimestamp(trade.timestamp)}</p>
+          </div>
+          <div class="trade-details">
+            <p><strong>Side:</strong> ${side}</p>
+            <p><strong>Order Type:</strong> ${orderType}</p>
+            <p><strong>Quantity:</strong> ${displayQuantity} ${quantityType}</p>
+            <p><strong>Price:</strong> $${displayPrice}</p>
+            <p><strong>Total:</strong> $${displayTotal}</p>
+            <p><strong>Status:</strong> ${status}</p>
+          </div>
+        </article>
+      `;
+    }
+
+    async function displayTradeHistory() {
+      let historyList = document.getElementById("history-list");
+
+      try {
+        if (trades.length === 0) {
+          trades = await getTrades();
+        }
+
+        let sortedTrades = trades.slice().sort(function (a, b) {
+          let aTime = new Date(a.timestamp).getTime();
+          let bTime = new Date(b.timestamp).getTime();
+          return bTime - aTime;
+        });
+
+        if (sortedTrades.length === 0) {
+          historyList.innerHTML = "<p class=\"empty-state\">No trades have executed yet.</p>";
+          return;
+        }
+
+        historyList.innerHTML = "";
+
+        for (let trade of sortedTrades) {
+          let wrapper = document.createElement("div");
+          wrapper.innerHTML = tradeToCardHtml(trade);
+          historyList.appendChild(wrapper.firstElementChild);
+        }
+      } catch (error) {
+        historyList.innerHTML = "<p class=\"empty-state\">Unable to reach backend.</p>";
+      }
+    }
+
+    async function refreshTradeHistory() {
+      try {
+        trades = await getTrades();
+        await displayTradeHistory();
+      } catch (error) {
+      }
+    }
+  </script>
+</body>
+</html>

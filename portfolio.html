@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portfolio</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="page-header">
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="portfolio.html">Portfolio</a>
+      <a href="feed.html">Feed</a>
+      <a href="history.html">History</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h1>Portfolio</h1>
+      <p>Current cash balance, holdings, and total portfolio value are shown below.</p>
+    </section>
+
+    <section class="card">
+      <div class="stats-grid">
+        <div class="stat">
+          <p class="stat-label">Cash Balance</p>
+          <p id="balance-value" class="stat-value">Loading...</p>
+        </div>
+        <div class="stat">
+          <p class="stat-label">Total Portfolio Value</p>
+          <p id="total-value" class="stat-value">Loading...</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Holdings</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Shares</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="holdings-body"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    let host = "https://trading-simulator-latest.onrender.com";
+
+    let balance = null;
+    let totalValue = null;
+    let holdings = {};
+
+    displayPortfolio();
+    setInterval(refreshPortfolio, 5000);
+
+    async function getBalance() {
+      let response = await fetch(host + "/portfolio/balance");
+      if (!response.ok) {
+        throw new Error("Unable to load balance.");
+      }
+      let result = await response.json();
+      return result;
+    }
+
+    async function getTotalValue() {
+      let response = await fetch(host + "/portfolio/totalvalue");
+      if (!response.ok) {
+        throw new Error("Unable to load total value.");
+      }
+      let result = await response.json();
+      return result;
+    }
+
+    async function getHoldings() {
+      let response = await fetch(host + "/portfolio/holdings");
+      if (!response.ok) {
+        throw new Error("Unable to load holdings.");
+      }
+      let result = await response.json();
+      return result;
+    }
+
+    async function displayPortfolio() {
+      let balanceValue = document.getElementById("balance-value");
+      let totalValueElement = document.getElementById("total-value");
+      let holdingsBody = document.getElementById("holdings-body");
+
+      try {
+        if (balance === null || totalValue === null || Object.keys(holdings).length === 0) {
+          balance = await getBalance();
+          totalValue = await getTotalValue();
+          holdings = await getHoldings();
+        }
+
+        balanceValue.textContent = "$" + Number(balance).toFixed(2);
+        totalValueElement.textContent = "$" + Number(totalValue).toFixed(2);
+
+        holdingsBody.innerHTML = "";
+        let symbols = Object.keys(holdings);
+
+        if (symbols.length === 0) {
+          holdingsBody.innerHTML = "<tr><td colspan=\"3\" class=\"empty-state\">No holdings yet.</td></tr>";
+          return;
+        }
+
+        for (let symbol of symbols) {
+          let tradeLink = "order.html?symbol=" + encodeURIComponent(symbol);
+          let row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${symbol}</td>
+            <td>${Number(holdings[symbol]).toFixed(4)}</td>
+            <td><a class="card-link" href="${tradeLink}">Trade</a></td>
+          `;
+          holdingsBody.appendChild(row);
+        }
+      } catch (error) {
+        balanceValue.textContent = "Unavailable";
+        totalValueElement.textContent = "Unavailable";
+        holdingsBody.innerHTML = "<tr><td colspan=\"3\" class=\"empty-state\">Unable to reach backend.</td></tr>";
+      }
+    }
+
+    async function refreshPortfolio() {
+      try {
+        let results = await Promise.all([
+          getBalance(),
+          getTotalValue(),
+          getHoldings()
+        ]);
+
+        balance = results[0];
+        totalValue = results[1];
+        holdings = results[2];
+
+        await displayPortfolio();
+      } catch (error) {
+      }
+    }
+  </script>
+</body>
+</html>
